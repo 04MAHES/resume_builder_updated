@@ -103,51 +103,172 @@
 #     else:
 #         raise TypeError(f"Unsupported input type: {type(file_input)}")
 
+# import os
+# from io import BytesIO
+# import fitz  # PyMuPDF
+# import easyocr
+# from PyPDF2 import PdfReader
+# from docx import Document
+
+# # Initialize EasyOCR reader ONCE (expensive)
+# reader = easyocr.Reader(['en'], gpu=False)
+
+
+# # ======================================================
+# # 1) OCR for scanned PDFs (PyMuPDF + EasyOCR)
+# # ======================================================
+# def extract_text_from_pdf_ocr(pdf_source):
+#     print("Running OCR with PyMuPDF + EasyOCR...")
+
+#     # Handle BytesIO vs file path:
+#     if isinstance(pdf_source, BytesIO):
+#         pdf_bytes = pdf_source.getvalue()
+#         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+#     else:
+#         doc = fitz.open(pdf_source)
+
+#     text = ""
+
+#     for page in doc:
+#         # Render page → image
+#         pix = page.get_pixmap(dpi=200)
+#         img_bytes = pix.tobytes("png")
+
+#         # EasyOCR on the image bytes
+#         result = reader.readtext(img_bytes, detail=0, paragraph=True)
+
+#         page_text = "\n".join(result)
+#         text += page_text + "\n"
+
+#     doc.close()
+#     return text
+
+
+# # ======================================================
+# # 2) Normal PDF text extraction (PyPDF2)
+# # ======================================================
+# def extract_text_from_pdf(pdf_source):
+#     print("Extracting text using PyPDF2...")
+
+#     try:
+#         if isinstance(pdf_source, BytesIO):
+#             reader = PdfReader(pdf_source)
+#         else:
+#             reader = PdfReader(str(pdf_source))
+#     except Exception as e:
+#         print(f"PyPDF2 failed ({e}) → Using OCR instead.")
+#         return extract_text_from_pdf_ocr(pdf_source)
+
+#     full_text = ""
+
+#     for page in reader.pages:
+#         txt = page.extract_text()
+#         if txt:
+#             full_text += txt + "\n"
+
+#     # If no selectable text → scanned PDF → run OCR
+#     if full_text.strip() == "":
+#         print("PDF has no extractable text → Running OCR...")
+#         return extract_text_from_pdf_ocr(pdf_source)
+
+#     return full_text
+
+
+# # ======================================================
+# # 3) DOCX extraction
+# # ======================================================
+# def extract_text_from_docx(docx_source):
+#     print("Extracting text from DOCX...")
+#     doc = Document(docx_source)
+#     return "\n".join([p.text for p in doc.paragraphs])
+
+
+# # ======================================================
+# # 4) Main dispatcher (BytesIO or file path)
+# # ======================================================
+# def extract_text(file_input):
+#     print("extract_text() called...")
+
+#     # Case 1: Streamlit file upload (BytesIO)
+#     if isinstance(file_input, BytesIO):
+#         print("Detected BytesIO upload...")
+#         file_input.seek(0)
+
+#         try:
+#             return extract_text_from_pdf(file_input)
+#         except Exception as e:
+#             print(f"PDF parse failed ({e}) → Trying DOCX instead...")
+#             file_input.seek(0)
+#             return extract_text_from_docx(file_input)
+
+#     # Case 2: Local file path
+#     elif isinstance(file_input, (str, bytes, os.PathLike)):
+#         ext = os.path.splitext(str(file_input))[1].lower()
+
+#         if ext == ".pdf":
+#             return extract_text_from_pdf(file_input)
+
+#         elif ext == ".docx":
+#             return extract_text_from_docx(file_input)
+
+#         else:
+#             raise ValueError(f"Unsupported file type: {ext}")
+
+#     # Unsupported input type
+#     else:
+#         raise TypeError(f"Unsupported input type: {type(file_input)}")
+
+
 import os
 from io import BytesIO
 import fitz  # PyMuPDF
-import easyocr
+import pdfplumber
 from PyPDF2 import PdfReader
 from docx import Document
 
-# Initialize EasyOCR reader ONCE (expensive)
-reader = easyocr.Reader(['en'], gpu=False)
-
 
 # ======================================================
-# 1) OCR for scanned PDFs (PyMuPDF + EasyOCR)
+# 1) Try PyMuPDF (best extraction, works for scanned/text)
 # ======================================================
-def extract_text_from_pdf_ocr(pdf_source):
-    print("Running OCR with PyMuPDF + EasyOCR...")
+def extract_text_with_pymupdf(pdf_source):
+    print("Extracting text using PyMuPDF...")
 
-    # Handle BytesIO vs file path:
     if isinstance(pdf_source, BytesIO):
-        pdf_bytes = pdf_source.getvalue()
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        doc = fitz.open(stream=pdf_source.getvalue(), filetype="pdf")
     else:
-        doc = fitz.open(pdf_source)
+        doc = fitz.open(str(pdf_source))
 
     text = ""
-
     for page in doc:
-        # Render page → image
-        pix = page.get_pixmap(dpi=200)
-        img_bytes = pix.tobytes("png")
-
-        # EasyOCR on the image bytes
-        result = reader.readtext(img_bytes, detail=0, paragraph=True)
-
-        page_text = "\n".join(result)
-        text += page_text + "\n"
+        page_text = page.get_text()  # PyMuPDF auto-detects best layout
+        if page_text.strip():
+            text += page_text + "\n"
 
     doc.close()
     return text
 
 
 # ======================================================
-# 2) Normal PDF text extraction (PyPDF2)
+# 2) Try pdfplumber (second best)
 # ======================================================
-def extract_text_from_pdf(pdf_source):
+def extract_text_with_pdfplumber(pdf_source):
+    print("Extracting text using pdfplumber...")
+
+    if isinstance(pdf_source, BytesIO):
+        pdf_source.seek(0)
+        with pdfplumber.open(pdf_source) as pdf:
+            pages_text = [page.extract_text() or "" for page in pdf.pages]
+    else:
+        with pdfplumber.open(str(pdf_source)) as pdf:
+            pages_text = [page.extract_text() or "" for page in pdf.pages]
+
+    return "\n".join(pages_text)
+
+
+# ======================================================
+# 3) Try PyPDF2 as a fallback
+# ======================================================
+def extract_text_with_pypdf2(pdf_source):
     print("Extracting text using PyPDF2...")
 
     try:
@@ -156,26 +277,43 @@ def extract_text_from_pdf(pdf_source):
         else:
             reader = PdfReader(str(pdf_source))
     except Exception as e:
-        print(f"PyPDF2 failed ({e}) → Using OCR instead.")
-        return extract_text_from_pdf_ocr(pdf_source)
+        print("PyPDF2 failed:", e)
+        return ""
 
-    full_text = ""
-
+    text = ""
     for page in reader.pages:
-        txt = page.extract_text()
-        if txt:
-            full_text += txt + "\n"
-
-    # If no selectable text → scanned PDF → run OCR
-    if full_text.strip() == "":
-        print("PDF has no extractable text → Running OCR...")
-        return extract_text_from_pdf_ocr(pdf_source)
-
-    return full_text
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+    return text
 
 
 # ======================================================
-# 3) DOCX extraction
+# 4) Auto PDF extractor (tries everything)
+# ======================================================
+def extract_text_from_pdf(pdf_source):
+    print("extract_text_from_pdf() called...")
+
+    # 1) Try PyMuPDF
+    text = extract_text_with_pymupdf(pdf_source)
+    if text.strip():
+        return text
+
+    # 2) Try pdfplumber
+    text = extract_text_with_pdfplumber(pdf_source)
+    if text.strip():
+        return text
+
+    # 3) Try PyPDF2
+    text = extract_text_with_pypdf2(pdf_source)
+    if text.strip():
+        return text
+
+    return ""
+
+
+# ======================================================
+# 5) DOCX extraction
 # ======================================================
 def extract_text_from_docx(docx_source):
     print("Extracting text from DOCX...")
@@ -184,24 +322,27 @@ def extract_text_from_docx(docx_source):
 
 
 # ======================================================
-# 4) Main dispatcher (BytesIO or file path)
+# 6) Main dispatcher (BytesIO or filepath)
 # ======================================================
 def extract_text(file_input):
-    print("extract_text() called...")
+    print("extract_text() main called...")
 
-    # Case 1: Streamlit file upload (BytesIO)
+    # CASE 1: Streamlit uploaded file (BytesIO)
     if isinstance(file_input, BytesIO):
         print("Detected BytesIO upload...")
         file_input.seek(0)
 
+        # Try PDF extraction first
         try:
             return extract_text_from_pdf(file_input)
-        except Exception as e:
-            print(f"PDF parse failed ({e}) → Trying DOCX instead...")
-            file_input.seek(0)
-            return extract_text_from_docx(file_input)
+        except:
+            pass
 
-    # Case 2: Local file path
+        # Try DOCX extraction
+        file_input.seek(0)
+        return extract_text_from_docx(file_input)
+
+    # CASE 2: File path
     elif isinstance(file_input, (str, bytes, os.PathLike)):
         ext = os.path.splitext(str(file_input))[1].lower()
 
@@ -214,6 +355,6 @@ def extract_text(file_input):
         else:
             raise ValueError(f"Unsupported file type: {ext}")
 
-    # Unsupported input type
+    # Unsupported input
     else:
         raise TypeError(f"Unsupported input type: {type(file_input)}")
