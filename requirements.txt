@@ -35,7 +35,7 @@ pyyaml
 # Pure-Python PDF generator (no system deps)
 fpdf2
 aspose-words-cloud
-
+easyocr
 pdf2image
 pytesseract
 PyPDF2
