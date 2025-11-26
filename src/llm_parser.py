@@ -2,13 +2,20 @@ import os
 from dotenv import load_dotenv
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
+import streamlit as st
 
 
 load_dotenv()
 
+# llm = ChatGoogleGenerativeAI(
+#     model="models/gemini-2.5-flash",
+#     google_api_key=os.getenv("GOOGLE_API_KEY"),
+#     temperature=0
+# )
+
 llm = ChatGoogleGenerativeAI(
     model="models/gemini-2.5-flash",
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
+    google_api_key=st.secrets["GOOGLE_API_KEY"],
     temperature=0
 )
 

@@ -4,15 +4,21 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from dotenv import load_dotenv
+import streamlit as st
 
 # Load environment variables
 load_dotenv()
 
-SENDER_EMAIL = os.getenv("SENDER_GMAIL")
-APP_PASSWORD = os.getenv("GMAIL_APP_KEY")
-SMTP_SERVER = os.getenv("SMTP_URL", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+# SENDER_EMAIL = os.getenv("SENDER_GMAIL")
+# APP_PASSWORD = os.getenv("GMAIL_APP_KEY")
+# SMTP_SERVER = os.getenv("SMTP_URL", "smtp.gmail.com")
+# SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
+
+SENDER_EMAIL = st.secrets["SENDER_GMAIL"]
+APP_PASSWORD = st.secrets["GMAIL_APP_KEY"]
+SMTP_SERVER = st.secrets["SMTP_URL"]
+SMTP_PORT = st.secrets["SMTP_PORT"]
 
 def send_mail_with_files(recipients, attachments, subject=None, body_text=None, skip_missing=True):
     """
